@@ -1,89 +1,42 @@
-# ChampSim
+# Cross-Tier Dead Block Management 
 
-![GitHub](https://img.shields.io/github/license/ChampSim/ChampSim)
-![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/ChampSim/ChampSim/test.yml)
-![GitHub forks](https://img.shields.io/github/forks/ChampSim/ChampSim)
-[![Coverage Status](https://coveralls.io/repos/github/ChampSim/ChampSim/badge.svg?branch=develop)](https://coveralls.io/github/ChampSim/ChampSim?branch=develop)
+**Author:** Venkata Ram Mohan Reddy Jalireddygari (Roll No: 26M0770)  
+**Course:** Advanced Computer Architecture
 
-ChampSim is a trace-based simulator for a microarchitecture study. If you have questions about how to use ChampSim, we encourage you to search the threads in the Discussions tab or start your own thread. If you are aware of a bug or have a feature request, open a new Issue.
+This repository contains a custom multi-tier cache replacement architecture implemented within the **ChampSim** simulator. The project aims to eliminate Last-Level Cache (LLC) pollution by mathematically identifying "dead blocks" in the L1 Data Cache (L1D) and passing a 1-bit eviction hint down the interconnect to guide L2 cache replacement policies.
 
-# Using ChampSim
+## The Problem: Cache Pollution
+In standard cache hierarchies, tiers operate in isolation. When the L1D evicts a block, it drops it down to the L2 cache. Lacking contextual history, the L2 blindly assumes this arriving data is highly valuable and inserts it at the Most Recently Used (MRU) position. If the CPU is actually finished with this data (a "dead block"), treating it as high-priority wastes massive amounts of L2 capacity and forces out genuinely useful data.
 
-ChampSim is the result of academic research. If you use this software in your work, please cite it using the following reference:
+## Proposed Architecture
+This project establishes a low-overhead communication channel between cache tiers using three core mechanisms:
 
-    Gober, N., Chacon, G., Wang, L., Gratz, P. V., Jimenez, D. A., Teran, E., Pugsley, S., & Kim, J. (2022). The Championship Simulator: Architectural Simulation for Education and Competition. https://doi.org/10.48550/arXiv.2210.14324
+1. **Local Prediction (L1D):** A PC-based signature table tracks the Instruction Pointer (PC) that fetched each cache block. Using a 2-bit saturating counter, the L1D learns if a specific instruction tends to fetch highly reusable or "one-time-use" data. When evicted, blocks with maxed-out counters are flagged as dead.
+2. **The Metadata Hint (Interconnect):** Instead of dropping the block silently, the L1D attaches a 1-bit "dead hint" to the eviction packet sent down the memory bus, piggybacking on existing traffic with near-zero overhead.
+3. **Hint-Aware Insertion (L2C):** A custom Re-Reference Interval Prediction (RRIP) policy in the L2 reads the incoming 1-bit hint. If flagged as dead, the L2 overrides standard insertion and assigns the block the maximum RRPV (Re-Reference Prediction Value). This targets the dead block for immediate eviction, preventing L2 pollution.
 
-If you use ChampSim in your work, you may submit a pull request modifying `PUBLICATIONS_USING_CHAMPSIM.bib` to have it featured in [the documentation](https://champsim.github.io/ChampSim/master/Publications-using-champsim.html).
+## Project Structure
+Modifications are built on top of the modern ChampSim replacement API:
+* `replacement/dbp/dbp.h` & `dbp.cc`: The L1D Dead Block Predictor utilizing a global `std::map` of PC signatures and 2-bit counters.
+* `replacement/hint_lru/hint_lru.cc`: *(In Progress)* The hint-aware L2 insertion policy.
+* `scripts/run_baseline.sh`: Automation script for benchmarking DPC-3 traces.
 
-# Download dependencies
+##  Checkpoint 1 Results
+Initial phase testing validates the L1D predictor (`dbp.cc`) against a standard LRU baseline. Simulations were executed using the memory-intensive `429.mcf-22B` DPC-3 trace with a 10M instruction warmup and 50M instruction simulation window.
+can find the results in results folder
 
-ChampSim uses [vcpkg](https://vcpkg.io) to manage its dependencies. In this repository, vcpkg is included as a submodule. You can download the dependencies with
-```
-git submodule update --init
-vcpkg/bootstrap-vcpkg.sh
-vcpkg/vcpkg install
-```
+## 🚀 How to Run
 
-# Compile
+1. **Configure and Build ChampSim:**
+   Compile the simulator with the custom L1D predictor and standard L2 LRU (or the future hint-aware L2 policy).
+   ```bash
+   ./config.sh champsim_config.json
+   make
+   ```
 
-ChampSim takes a JSON configuration script. Examine `champsim_config.json` for a fully-specified example. All options described in this file are optional and will be replaced with defaults if not specified. The configuration scrip can also be run without input, in which case an empty file is assumed.
-```
-$ ./config.sh <configuration file>
-$ make
-```
-
-# Download DPC-3 trace
-
-Traces used for the 3rd Data Prefetching Championship (DPC-3) can be found here. (https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/) A set of traces used for the 2nd Cache Replacement Championship (CRC-2) can be found from this link. (http://bit.ly/2t2nkUj)
-
-Storage for these traces is kindly provided by Daniel Jimenez (Texas A&M University) and Mike Ferdman (Stony Brook University). If you find yourself frequently using ChampSim, it is highly encouraged that you maintain your own repository of traces, in case the links ever break.
-
-# Run simulation
-
-Execute the binary directly.
-```
-$ bin/champsim --warmup-instructions 200000000 --simulation-instructions 500000000 ~/path/to/traces/600.perlbench_s-210B.champsimtrace.xz
-```
-
-The number of warmup and simulation instructions given will be the number of instructions retired. Note that the statistics printed at the end of the simulation include only the simulation phase.
-
-# Add your own branch predictor, data prefetchers, and replacement policy
-**Copy an empty template**
-```
-$ mkdir prefetcher/mypref
-$ cp prefetcher/no_l2c/no.cc prefetcher/mypref/mypref.cc
-```
-
-**Work on your algorithms with your favorite text editor**
-```
-$ vim prefetcher/mypref/mypref.cc
-```
-
-**Compile and test**
-Add your prefetcher to the configuration file.
-```
-{
-    "L2C": {
-        "prefetcher": "mypref"
-    }
-}
-```
-Note that the example prefetcher is an L2 prefetcher. You might design a prefetcher for a different level.
-
-```
-$ ./config.sh <configuration file>
-$ make
-$ bin/champsim --warmup-instructions 200000000 --simulation-instructions 500000000 600.perlbench_s-210B.champsimtrace.xz
-```
-
-# How to create traces
-
-Program traces are available in a variety of locations, however, many ChampSim users wish to trace their own programs for research purposes.
-Example tracing utilities are provided in the `tracer/` directory.
-
-# Evaluate Simulation
-
-ChampSim measures the IPC (Instruction Per Cycle) value as a performance metric. <br>
-There are some other useful metrics printed out at the end of simulation. <br>
-
-Good luck and be a champion! <br>
+2. **Run the Simulation Script:**
+   Ensure your benchmarking scripts are executable and run them against your downloaded DPC-3 traces.
+   ```bash
+   chmod +x run_baseline.sh
+   ./run_baseline.sh
+   ```
