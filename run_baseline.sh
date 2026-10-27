@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Create a folder to store the output logs
+# mkdir -p results
+
+TRACE="traces/429.mcf-22B.champsimtrace.xz"
+OUTPUT_FILE="results/dip_mcf_results.txt"
+
+# Run a quick evaluation: 10 Million Warmup, 50 Million Simulation
+# (For final ACA project results, change these to 200000000 and 500000000)
+WARMUP=10000000
+SIM=50000000
+
+echo "Starting Baseline Benchmark on $TRACE..."
+echo "Warmup: $WARMUP | Simulation: $SIM"
+
+# Run ChampSim and redirect output to the results text file
+./bin/champsim --warmup-instructions $WARMUP --simulation-instructions $SIM $TRACE > $OUTPUT_FILE
+
+echo "Benchmark Complete! Full output saved to $OUTPUT_FILE"
+echo "---------------------------------------------------"
+echo "Baseline IPC Result:"
+
+# Extract and print just the IPC line for CPU 0 from the log file
+grep "CPU 0 cumulative IPC" $OUTPUT_FILE

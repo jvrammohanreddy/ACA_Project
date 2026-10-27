@@ -1,0 +1,5 @@
+{
+    "L1D": {
+        "replacement": "lru"
+    }
+}
