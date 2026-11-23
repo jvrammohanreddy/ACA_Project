@@ -1,0 +1,665 @@
+commit a7ab802120d9664a6ca46de29408466f88c0ed8b
+Author: Ram <wetcigar@Rams-MacBook-Air.local>
+Date:   Tue Oct 27 15:43:01 2026 +0530
+
+    Added proper RREADME
+
+diff --git a/README.md b/README.md
+index 299d37e4..3de4f521 100644
+--- a/README.md
++++ b/README.md
+@@ -1,89 +1,42 @@
+-# ChampSim
++# Cross-Tier Dead Block Management 
+ 
+-![GitHub](https://img.shields.io/github/license/ChampSim/ChampSim)
+-![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/ChampSim/ChampSim/test.yml)
+-![GitHub forks](https://img.shields.io/github/forks/ChampSim/ChampSim)
+-[![Coverage Status](https://coveralls.io/repos/github/ChampSim/ChampSim/badge.svg?branch=develop)](https://coveralls.io/github/ChampSim/ChampSim?branch=develop)
++**Author:** Venkata Ram Mohan Reddy Jalireddygari (Roll No: 26M0770)  
++**Course:** Advanced Computer Architecture
+ 
+-ChampSim is a trace-based simulator for a microarchitecture study. If you have questions about how to use ChampSim, we encourage you to search the threads in the Discussions tab or start your own thread. If you are aware of a bug or have a feature request, open a new Issue.
++This repository contains a custom multi-tier cache replacement architecture implemented within the **ChampSim** simulator. The project aims to eliminate Last-Level Cache (LLC) pollution by mathematically identifying "dead blocks" in the L1 Data Cache (L1D) and passing a 1-bit eviction hint down the interconnect to guide L2 cache replacement policies.
+ 
+-# Using ChampSim
++## The Problem: Cache Pollution
++In standard cache hierarchies, tiers operate in isolation. When the L1D evicts a block, it drops it down to the L2 cache. Lacking contextual history, the L2 blindly assumes this arriving data is highly valuable and inserts it at the Most Recently Used (MRU) position. If the CPU is actually finished with this data (a "dead block"), treating it as high-priority wastes massive amounts of L2 capacity and forces out genuinely useful data.
+ 
+-ChampSim is the result of academic research. If you use this software in your work, please cite it using the following reference:
++## Proposed Architecture
++This project establishes a low-overhead communication channel between cache tiers using three core mechanisms:
+ 
+-    Gober, N., Chacon, G., Wang, L., Gratz, P. V., Jimenez, D. A., Teran, E., Pugsley, S., & Kim, J. (2022). The Championship Simulator: Architectural Simulation for Education and Competition. https://doi.org/10.48550/arXiv.2210.14324
++1. **Local Prediction (L1D):** A PC-based signature table tracks the Instruction Pointer (PC) that fetched each cache block. Using a 2-bit saturating counter, the L1D learns if a specific instruction tends to fetch highly reusable or "one-time-use" data. When evicted, blocks with maxed-out counters are flagged as dead.
++2. **The Metadata Hint (Interconnect):** Instead of dropping the block silently, the L1D attaches a 1-bit "dead hint" to the eviction packet sent down the memory bus, piggybacking on existing traffic with near-zero overhead.
++3. **Hint-Aware Insertion (L2C):** A custom Re-Reference Interval Prediction (RRIP) policy in the L2 reads the incoming 1-bit hint. If flagged as dead, the L2 overrides standard insertion and assigns the block the maximum RRPV (Re-Reference Prediction Value). This targets the dead block for immediate eviction, preventing L2 pollution.
+ 
+-If you use ChampSim in your work, you may submit a pull request modifying `PUBLICATIONS_USING_CHAMPSIM.bib` to have it featured in [the documentation](https://champsim.github.io/ChampSim/master/Publications-using-champsim.html).
++## Project Structure
++Modifications are built on top of the modern ChampSim replacement API:
++* `replacement/dbp/dbp.h` & `dbp.cc`: The L1D Dead Block Predictor utilizing a global `std::map` of PC signatures and 2-bit counters.
++* `replacement/hint_lru/hint_lru.cc`: *(In Progress)* The hint-aware L2 insertion policy.
++* `scripts/run_baseline.sh`: Automation script for benchmarking DPC-3 traces.
+ 
+-# Download dependencies
++##  Checkpoint 1 Results
++Initial phase testing validates the L1D predictor (`dbp.cc`) against a standard LRU baseline. Simulations were executed using the memory-intensive `429.mcf-22B` DPC-3 trace with a 10M instruction warmup and 50M instruction simulation window.
++can find the results in results folder
+ 
+-ChampSim uses [vcpkg](https://vcpkg.io) to manage its dependencies. In this repository, vcpkg is included as a submodule. You can download the dependencies with
+-```
+-git submodule update --init
+-vcpkg/bootstrap-vcpkg.sh
+-vcpkg/vcpkg install
+-```
++## 🚀 How to Run
+ 
+-# Compile
++1. **Configure and Build ChampSim:**
++   Compile the simulator with the custom L1D predictor and standard L2 LRU (or the future hint-aware L2 policy).
++   ```bash
++   ./config.sh champsim_config.json
++   make
++   ```
+ 
+-ChampSim takes a JSON configuration script. Examine `champsim_config.json` for a fully-specified example. All options described in this file are optional and will be replaced with defaults if not specified. The configuration scrip can also be run without input, in which case an empty file is assumed.
+-```
+-$ ./config.sh <configuration file>
+-$ make
+-```
+-
+-# Download DPC-3 trace
+-
+-Traces used for the 3rd Data Prefetching Championship (DPC-3) can be found here. (https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/) A set of traces used for the 2nd Cache Replacement Championship (CRC-2) can be found from this link. (http://bit.ly/2t2nkUj)
+-
+-Storage for these traces is kindly provided by Daniel Jimenez (Texas A&M University) and Mike Ferdman (Stony Brook University). If you find yourself frequently using ChampSim, it is highly encouraged that you maintain your own repository of traces, in case the links ever break.
+-
+-# Run simulation
+-
+-Execute the binary directly.
+-```
+-$ bin/champsim --warmup-instructions 200000000 --simulation-instructions 500000000 ~/path/to/traces/600.perlbench_s-210B.champsimtrace.xz
+-```
+-
+-The number of warmup and simulation instructions given will be the number of instructions retired. Note that the statistics printed at the end of the simulation include only the simulation phase.
+-
+-# Add your own branch predictor, data prefetchers, and replacement policy
+-**Copy an empty template**
+-```
+-$ mkdir prefetcher/mypref
+-$ cp prefetcher/no_l2c/no.cc prefetcher/mypref/mypref.cc
+-```
+-
+-**Work on your algorithms with your favorite text editor**
+-```
+-$ vim prefetcher/mypref/mypref.cc
+-```
+-
+-**Compile and test**
+-Add your prefetcher to the configuration file.
+-```
+-{
+-    "L2C": {
+-        "prefetcher": "mypref"
+-    }
+-}
+-```
+-Note that the example prefetcher is an L2 prefetcher. You might design a prefetcher for a different level.
+-
+-```
+-$ ./config.sh <configuration file>
+-$ make
+-$ bin/champsim --warmup-instructions 200000000 --simulation-instructions 500000000 600.perlbench_s-210B.champsimtrace.xz
+-```
+-
+-# How to create traces
+-
+-Program traces are available in a variety of locations, however, many ChampSim users wish to trace their own programs for research purposes.
+-Example tracing utilities are provided in the `tracer/` directory.
+-
+-# Evaluate Simulation
+-
+-ChampSim measures the IPC (Instruction Per Cycle) value as a performance metric. <br>
+-There are some other useful metrics printed out at the end of simulation. <br>
+-
+-Good luck and be a champion! <br>
++2. **Run the Simulation Script:**
++   Ensure your benchmarking scripts are executable and run them against your downloaded DPC-3 traces.
++   ```bash
++   chmod +x run_baseline.sh
++   ./run_baseline.sh
++   ```
+
+commit c0f12eebf724f594c6cc0137457680acfedccf09
+Author: Ram <wetcigar@Rams-MacBook-Air.local>
+Date:   Tue Oct 27 10:41:00 2026 +0530
+
+    Added complete DBP code with initial results
+
+diff --git a/baseline_config.json b/baseline_config.json
+new file mode 100644
+index 00000000..10702f72
+--- /dev/null
++++ b/baseline_config.json
+@@ -0,0 +1,5 @@
++{
++    "L1D": {
++        "replacement": "lru"
++    }
++}
+\ No newline at end of file
+diff --git a/champsim_config.json b/champsim_config.json
+index d8a33e13..80c89f43 100644
+--- a/champsim_config.json
++++ b/champsim_config.json
+@@ -68,7 +68,8 @@
+     "prefetch_as_load": false,
+     "virtual_prefetch": false,
+     "prefetch_activate": "LOAD,PREFETCH",
+-    "prefetcher": "no"
++    "prefetcher": "no",
++    "replacement": "dbp"
+   },
+ 
+   "L2C": {
+diff --git a/replacement/dbp/dbp.cc b/replacement/dbp/dbp.cc
+index 5846fa75..3540db19 100644
+--- a/replacement/dbp/dbp.cc
++++ b/replacement/dbp/dbp.cc
+@@ -1,67 +1,68 @@
+-#include "cache.h"
+-#include <map>
+-#include <vector>
++#include "dbp.h"
++#include <algorithm>
++#include <cassert>
+ 
+-// 1. Predictor Table: Maps an Instruction Pointer (PC) to a confidence counter (0 to 3)
+-// 3 = Highly likely to be dead, 0 = Highly likely to be reused
+-std::map<uint64_t, int> dead_block_predictor;
++// Initialize the static global predictor table
++std::map<std::size_t, int> dbp::dead_block_predictor;
+ 
+-// 2. Parallel Cache Metadata: Tracks the last PC that accessed each block
+-std::vector<std::vector<uint64_t>> last_touch_pc;
++// Constructor routing
++dbp::dbp(CACHE* cache) : dbp(cache, cache->NUM_SET, cache->NUM_WAY) {}
+ 
+-// 3. Standard LRU counters for our fallback mechanism
+-std::vector<std::vector<uint64_t>> lru_counters;
++dbp::dbp(CACHE* cache, long sets, long ways) 
++    : replacement(cache), NUM_WAY(ways), 
++      last_used_cycles(static_cast<std::size_t>(sets * ways), 0),
++      last_touch_pc(static_cast<std::size_t>(sets * ways), 0) {}
+ 
+-void CACHE::initialize_replacement() {
+-    // Size the metadata arrays based on the specific cache's dimensions
+-    last_touch_pc.assign(NUM_SET, std::vector<uint64_t>(NUM_WAY, 0));
+-    lru_counters.assign(NUM_SET, std::vector<uint64_t>(NUM_WAY, 0));
+-}
+-
+-void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint32_t way, uint64_t full_addr, uint64_t ip, uint64_t victim_addr, uint32_t type, uint8_t hit) {
+-    // Update the LRU fallback counter
+-    lru_counters[set][way] = current_cycle;
++long dbp::find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, const champsim::cache_block* current_set, champsim::address ip, champsim::address full_addr, access_type type)
++{
++    auto begin = std::next(std::begin(last_used_cycles), set * NUM_WAY);
++    auto end = std::next(begin, NUM_WAY);
+ 
+-    if (hit) {
+-        // The block was reused! The previous PC was wrong if it predicted "Dead".
+-        uint64_t prev_pc = last_touch_pc[set][way];
+-        if (dead_block_predictor[prev_pc] > 0) {
+-            dead_block_predictor[prev_pc]--; // Decrement: Move towards "Alive"
+-        }
+-    } else {
+-        // A cache miss means the block previously in this slot was evicted.
+-        // Therefore, the last PC that touched it brought in a "Dead" block.
+-        uint64_t evicted_pc = last_touch_pc[set][way];
+-        if (dead_block_predictor[evicted_pc] < 3) {
+-            dead_block_predictor[evicted_pc]++; // Increment: Move towards "Dead"
++    // 1. DBP LOGIC: Check for predicted dead blocks
++    for (long way = 0; way < NUM_WAY; way++) {
++        std::size_t block_pc = last_touch_pc.at(static_cast<std::size_t>(set * NUM_WAY + way));
++        if (dead_block_predictor[block_pc] == 3) {
++            return way; // Evict immediately!
+         }
+     }
+ 
+-    // Record the new PC (ip) that is currently accessing this cache block
+-    last_touch_pc[set][way] = ip;
++    // 2. FALLBACK LOGIC: Standard LRU (copied safely from the default lru.cc)
++    auto victim = std::min_element(begin, end);
++    assert(begin <= victim);
++    assert(victim < end);
++    return std::distance(begin, victim);
+ }
+-uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t set, const BLOCK* current_set, uint64_t ip, uint64_t full_addr, uint32_t type) {
+-    // 1. DBP LOGIC: Check if any block in this set is predicted dead
+-    for (uint32_t way = 0; way < NUM_WAY; way++) {
+-        uint64_t block_pc = last_touch_pc[set][way];
+-        if (dead_block_predictor[block_pc] == 3) {
+-            return way; // Evict the predicted dead block immediately
+-        }
+-    }
+ 
+-    // 2. FALLBACK LOGIC: If no block is predicted dead, use standard LRU
+-    uint32_t lru_way = 0;
+-    uint64_t oldest_cycle = lru_counters[set][0];
++void dbp::replacement_cache_fill(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip, champsim::address victim_addr, access_type type)
++{
++    std::size_t index = static_cast<std::size_t>(set * NUM_WAY + way);
+     
+-    for (uint32_t way = 1; way < NUM_WAY; way++) {
+-        if (lru_counters[set][way] < oldest_cycle) {
+-            oldest_cycle = lru_counters[set][way];
+-            lru_way = way;
+-        }
++    // An insertion means the old block was evicted. 
++    // Learn: Increment dead counter for the PC that brought the victim in.
++    std::size_t evicted_pc = last_touch_pc.at(index);
++    if (dead_block_predictor[evicted_pc] < 3) {
++        dead_block_predictor[evicted_pc]++;
+     }
+-    
+-    return lru_way;
++
++    // Setup the new block
++    last_used_cycles.at(index) = cycle++;
++    last_touch_pc.at(index) = ip.to<std::size_t>();
+ }
+ 
+-// Required by ChampSim to compile, even if empty
+-void CACHE::replacement_final_stats() {}
+\ No newline at end of file
++void dbp::update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip, champsim::address victim_addr, access_type type, uint8_t hit)
++{
++    std::size_t index = static_cast<std::size_t>(set * NUM_WAY + way);
++    
++    if (hit && access_type{type} != access_type::WRITE) {
++        last_used_cycles.at(index) = cycle++;
++        
++        // Learn: Block was reused, it is NOT dead. Decrement the counter for the PC that brought it in.
++        std::size_t prev_pc = last_touch_pc.at(index);
++        if (dead_block_predictor[prev_pc] > 0) {
++            dead_block_predictor[prev_pc]--;
++        }
++
++        // Update the signature to the PC that just kept it alive
++        last_touch_pc.at(index) = ip.to<std::size_t>();
++    }
++}
+\ No newline at end of file
+diff --git a/replacement/dbp/dbp.h b/replacement/dbp/dbp.h
+new file mode 100644
+index 00000000..9bf5ee8e
+--- /dev/null
++++ b/replacement/dbp/dbp.h
+@@ -0,0 +1,37 @@
++#ifndef DBP_H
++#define DBP_H
++
++#include <vector>
++#include <map>
++#include <cstdint>
++#include <cstddef>
++
++#include "cache.h"
++#include "modules.h"
++
++class dbp : public champsim::modules::replacement
++{
++  long NUM_WAY;
++  
++  // Per-cache metadata using a flat 1D vector
++  std::vector<uint64_t> last_used_cycles;
++  std::vector<std::size_t> last_touch_pc;
++  
++  uint64_t cycle = 0;
++
++public:
++  // Global Predictor Table shared across all caches running this policy
++  static std::map<std::size_t, int> dead_block_predictor;
++
++  explicit dbp(CACHE* cache);
++  dbp(CACHE* cache, long sets, long ways);
++
++  long find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, const champsim::cache_block* current_set, champsim::address ip,
++                   champsim::address full_addr, access_type type);
++  void replacement_cache_fill(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip, champsim::address victim_addr,
++                              access_type type);
++  void update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip, champsim::address victim_addr,
++                                access_type type, uint8_t hit);
++};
++
++#endif
+\ No newline at end of file
+diff --git a/results/baseline_mcf_results.txt b/results/baseline_mcf_results.txt
+new file mode 100644
+index 00000000..50ab59d0
+--- /dev/null
++++ b/results/baseline_mcf_results.txt
+@@ -0,0 +1,102 @@
++[VMEM] WARNING: physical memory size is smaller than virtual memory size.
++
++*** ChampSim Multicore Out-of-Order Simulator ***
++Warmup Instructions: 10000000
++Simulation Instructions: 50000000
++Number of CPUs: 1
++Page size: 4096
++
++Off-chip DRAM Size: 16 GiB Channels: 1 Width: 64-bit Data Rate: 3205 MT/s
++Heartbeat CPU 0 instructions: 10000001 cycles: 10765552 heartbeat IPC: 0.9289 cumulative IPC: 0.9289 (Simulation time: 00 hr 01 min 05 sec)
++Warmup finished CPU 0 instructions: 10000001 cycles: 10765552 cumulative IPC: 0.9289 (Simulation time: 00 hr 01 min 05 sec)
++Warmup complete CPU 0 instructions: 10000001 cycles: 10765552 cumulative IPC: 0.9289 (Simulation time: 00 hr 01 min 05 sec)
++Heartbeat CPU 0 instructions: 20000001 cycles: 53971466 heartbeat IPC: 0.2314 cumulative IPC: 0.2314 (Simulation time: 00 hr 03 min 47 sec)
++Heartbeat CPU 0 instructions: 30000001 cycles: 75647378 heartbeat IPC: 0.4613 cumulative IPC: 0.3083 (Simulation time: 00 hr 05 min 19 sec)
++Heartbeat CPU 0 instructions: 40000005 cycles: 98094533 heartbeat IPC: 0.4455 cumulative IPC: 0.3435 (Simulation time: 00 hr 06 min 53 sec)
++Heartbeat CPU 0 instructions: 50000007 cycles: 125194340 heartbeat IPC: 0.369 cumulative IPC: 0.3496 (Simulation time: 00 hr 08 min 59 sec)
++Simulation finished CPU 0 instructions: 50000000 cycles: 150928920 cumulative IPC: 0.3313 (Simulation time: 00 hr 11 min 11 sec)
++Simulation complete CPU 0 instructions: 50000000 cycles: 150928920 cumulative IPC: 0.3313 (Simulation time: 00 hr 11 min 11 sec)
++
++ChampSim completed all CPUs
++
++=== Simulation ===
++CPU 0 runs traces/429.mcf-22B.champsimtrace.xz
++
++Region of Interest Statistics
++
++CPU 0 cumulative IPC: 0.3313 instructions: 50000000 cycles: 150928920
++CPU 0 Branch Prediction Accuracy: 98.69% MPKI: 1.156 Average ROB Occupancy at Mispredict: 136.5
++Branch type MPKI
++BRANCH_DIRECT_JUMP: 0
++BRANCH_INDIRECT: 0
++BRANCH_CONDITIONAL: 1.156
++BRANCH_DIRECT_CALL: 0
++BRANCH_INDIRECT_CALL: 0
++BRANCH_RETURN: 0
++
++cpu0->LLC TOTAL        ACCESS:    2068669 HIT:     690665 MISS:    1378004 MISS_MERGE:          0
++cpu0->LLC LOAD         ACCESS:    1332835 HIT:      19073 MISS:    1313762 MISS_MERGE:          0
++cpu0->LLC RFO          ACCESS:         12 HIT:          1 MISS:         11 MISS_MERGE:          0
++cpu0->LLC PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->LLC WRITE        ACCESS:     665778 HIT:     665330 MISS:        448 MISS_MERGE:          0
++cpu0->LLC TRANSLATION  ACCESS:      70044 HIT:       6261 MISS:      63783 MISS_MERGE:          0
++cpu0->LLC PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0
++cpu0->LLC AVERAGE MISS LATENCY: 211.2 cycles
++cpu0->cpu0_DTLB TOTAL        ACCESS:   24709651 HIT:   23735513 MISS:     974138 MISS_MERGE:     743675
++cpu0->cpu0_DTLB LOAD         ACCESS:   24709651 HIT:   23735513 MISS:     974138 MISS_MERGE:     743675
++cpu0->cpu0_DTLB RFO          ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_DTLB PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_DTLB WRITE        ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_DTLB TRANSLATION  ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_DTLB PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0
++cpu0->cpu0_DTLB AVERAGE MISS LATENCY: 173.4 cycles
++cpu0->cpu0_ITLB TOTAL        ACCESS:    7587354 HIT:    7587354 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_ITLB LOAD         ACCESS:    7587354 HIT:    7587354 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_ITLB RFO          ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_ITLB PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_ITLB WRITE        ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_ITLB TRANSLATION  ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_ITLB PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0
++cpu0->cpu0_ITLB AVERAGE MISS LATENCY: - cycles
++cpu0->cpu0_L1D TOTAL        ACCESS:   25036823 HIT:   21999564 MISS:    3037259 MISS_MERGE:    1611066
++cpu0->cpu0_L1D LOAD         ACCESS:   12311184 HIT:    9352246 MISS:    2958938 MISS_MERGE:    1608707
++cpu0->cpu0_L1D RFO          ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1D PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1D WRITE        ACCESS:   12398853 HIT:   12396968 MISS:       1885 MISS_MERGE:        939
++cpu0->cpu0_L1D TRANSLATION  ACCESS:     326786 HIT:     250350 MISS:      76436 MISS_MERGE:       1420
++cpu0->cpu0_L1D PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0
++cpu0->cpu0_L1D AVERAGE MISS LATENCY: 224.8 cycles
++cpu0->cpu0_L1I TOTAL        ACCESS:    7587354 HIT:    7587354 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1I LOAD         ACCESS:    7587354 HIT:    7587354 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1I RFO          ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1I PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1I WRITE        ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1I TRANSLATION  ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1I PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0
++cpu0->cpu0_L1I AVERAGE MISS LATENCY: - cycles
++cpu0->cpu0_L2C TOTAL        ACCESS:    2105189 HIT:     701067 MISS:    1404122 MISS_MERGE:          0
++cpu0->cpu0_L2C LOAD         ACCESS:    1350231 HIT:      17396 MISS:    1332835 MISS_MERGE:          0
++cpu0->cpu0_L2C RFO          ACCESS:        946 HIT:        934 MISS:         12 MISS_MERGE:          0
++cpu0->cpu0_L2C PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L2C WRITE        ACCESS:     678996 HIT:     677765 MISS:       1231 MISS_MERGE:          0
++cpu0->cpu0_L2C TRANSLATION  ACCESS:      75016 HIT:       4972 MISS:      70044 MISS_MERGE:          0
++cpu0->cpu0_L2C PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0
++cpu0->cpu0_L2C AVERAGE MISS LATENCY: 220.2 cycles
++cpu0->cpu0_STLB TOTAL        ACCESS:     230463 HIT:      72576 MISS:     157887 MISS_MERGE:          0
++cpu0->cpu0_STLB LOAD         ACCESS:     230463 HIT:      72576 MISS:     157887 MISS_MERGE:          0
++cpu0->cpu0_STLB RFO          ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_STLB PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_STLB WRITE        ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_STLB TRANSLATION  ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_STLB PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0
++cpu0->cpu0_STLB AVERAGE MISS LATENCY: 246.3 cycles
++
++DRAM Statistics
++
++Channel 0 RQ ROW_BUFFER_HIT:       4566
++  ROW_BUFFER_MISS:    1372978
++  AVG DBUS CONGESTED CYCLE: 9.984
++Channel 0 WQ ROW_BUFFER_HIT:     182508
++  ROW_BUFFER_MISS:     473299
++  FULL:          0
++Channel 0 REFRESHES ISSUED:      12577
+diff --git a/results/dip_mcf_results.txt b/results/dip_mcf_results.txt
+new file mode 100644
+index 00000000..5e0ac6b1
+--- /dev/null
++++ b/results/dip_mcf_results.txt
+@@ -0,0 +1,102 @@
++[VMEM] WARNING: physical memory size is smaller than virtual memory size.
++
++*** ChampSim Multicore Out-of-Order Simulator ***
++Warmup Instructions: 10000000
++Simulation Instructions: 50000000
++Number of CPUs: 1
++Page size: 4096
++
++Off-chip DRAM Size: 16 GiB Channels: 1 Width: 64-bit Data Rate: 3205 MT/s
++Heartbeat CPU 0 instructions: 10000001 cycles: 6600193 heartbeat IPC: 1.515 cumulative IPC: 1.515 (Simulation time: 00 hr 00 min 45 sec)
++Warmup finished CPU 0 instructions: 10000001 cycles: 6600193 cumulative IPC: 1.515 (Simulation time: 00 hr 00 min 45 sec)
++Warmup complete CPU 0 instructions: 10000001 cycles: 6600193 cumulative IPC: 1.515 (Simulation time: 00 hr 00 min 45 sec)
++Heartbeat CPU 0 instructions: 20000001 cycles: 49229025 heartbeat IPC: 0.2346 cumulative IPC: 0.2346 (Simulation time: 00 hr 03 min 18 sec)
++Heartbeat CPU 0 instructions: 30000001 cycles: 69292439 heartbeat IPC: 0.4984 cumulative IPC: 0.319 (Simulation time: 00 hr 04 min 37 sec)
++Heartbeat CPU 0 instructions: 40000004 cycles: 90105574 heartbeat IPC: 0.4805 cumulative IPC: 0.3593 (Simulation time: 00 hr 05 min 58 sec)
++Heartbeat CPU 0 instructions: 50000007 cycles: 118568160 heartbeat IPC: 0.3513 cumulative IPC: 0.3572 (Simulation time: 00 hr 07 min 55 sec)
++Simulation finished CPU 0 instructions: 50000000 cycles: 147469138 cumulative IPC: 0.3391 (Simulation time: 00 hr 09 min 59 sec)
++Simulation complete CPU 0 instructions: 50000000 cycles: 147469138 cumulative IPC: 0.3391 (Simulation time: 00 hr 09 min 59 sec)
++
++ChampSim completed all CPUs
++
++=== Simulation ===
++CPU 0 runs traces/429.mcf-22B.champsimtrace.xz
++
++Region of Interest Statistics
++
++CPU 0 cumulative IPC: 0.3391 instructions: 50000000 cycles: 147469138
++CPU 0 Branch Prediction Accuracy: 97.08% MPKI: 2.57 Average ROB Occupancy at Mispredict: 123.4
++Branch type MPKI
++BRANCH_DIRECT_JUMP: 0
++BRANCH_INDIRECT: 0
++BRANCH_CONDITIONAL: 2.57
++BRANCH_DIRECT_CALL: 0
++BRANCH_INDIRECT_CALL: 0
++BRANCH_RETURN: 0
++
++cpu0->LLC TOTAL        ACCESS:    2069807 HIT:     691559 MISS:    1378248 MISS_MERGE:          0
++cpu0->LLC LOAD         ACCESS:    1332902 HIT:      19191 MISS:    1313711 MISS_MERGE:          0
++cpu0->LLC RFO          ACCESS:         12 HIT:          1 MISS:         11 MISS_MERGE:          0
++cpu0->LLC PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->LLC WRITE        ACCESS:     666222 HIT:     665676 MISS:        546 MISS_MERGE:          0
++cpu0->LLC TRANSLATION  ACCESS:      70671 HIT:       6691 MISS:      63980 MISS_MERGE:          0
++cpu0->LLC PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0
++cpu0->LLC AVERAGE MISS LATENCY: 217.1 cycles
++cpu0->cpu0_DTLB TOTAL        ACCESS:   24710024 HIT:   23638770 MISS:    1071254 MISS_MERGE:     840856
++cpu0->cpu0_DTLB LOAD         ACCESS:   24710024 HIT:   23638770 MISS:    1071254 MISS_MERGE:     840856
++cpu0->cpu0_DTLB RFO          ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_DTLB PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_DTLB WRITE        ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_DTLB TRANSLATION  ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_DTLB PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0
++cpu0->cpu0_DTLB AVERAGE MISS LATENCY: 180.1 cycles
++cpu0->cpu0_ITLB TOTAL        ACCESS:    5987528 HIT:    5987528 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_ITLB LOAD         ACCESS:    5987528 HIT:    5987528 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_ITLB RFO          ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_ITLB PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_ITLB WRITE        ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_ITLB TRANSLATION  ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_ITLB PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0
++cpu0->cpu0_ITLB AVERAGE MISS LATENCY: - cycles
++cpu0->cpu0_L1D TOTAL        ACCESS:   25045022 HIT:   21860608 MISS:    3184414 MISS_MERGE:    1706215
++cpu0->cpu0_L1D LOAD         ACCESS:   12311182 HIT:    9261918 MISS:    3049264 MISS_MERGE:    1665941
++cpu0->cpu0_L1D RFO          ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1D PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1D WRITE        ACCESS:   12398847 HIT:   12345288 MISS:      53559 MISS_MERGE:      38723
++cpu0->cpu0_L1D TRANSLATION  ACCESS:     334993 HIT:     253402 MISS:      81591 MISS_MERGE:       1551
++cpu0->cpu0_L1D PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0
++cpu0->cpu0_L1D AVERAGE MISS LATENCY: 226.6 cycles
++cpu0->cpu0_L1I TOTAL        ACCESS:    5987528 HIT:    5987528 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1I LOAD         ACCESS:    5987528 HIT:    5987528 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1I RFO          ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1I PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1I WRITE        ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1I TRANSLATION  ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L1I PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0
++cpu0->cpu0_L1I AVERAGE MISS LATENCY: - cycles
++cpu0->cpu0_L2C TOTAL        ACCESS:    2192486 HIT:     787608 MISS:    1404878 MISS_MERGE:          1
++cpu0->cpu0_L2C LOAD         ACCESS:    1383323 HIT:      50420 MISS:    1332903 MISS_MERGE:          1
++cpu0->cpu0_L2C RFO          ACCESS:      14836 HIT:      14824 MISS:         12 MISS_MERGE:          0
++cpu0->cpu0_L2C PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_L2C WRITE        ACCESS:     714287 HIT:     712995 MISS:       1292 MISS_MERGE:          0
++cpu0->cpu0_L2C TRANSLATION  ACCESS:      80040 HIT:       9369 MISS:      70671 MISS_MERGE:          0
++cpu0->cpu0_L2C PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0
++cpu0->cpu0_L2C AVERAGE MISS LATENCY: 228.9 cycles
++cpu0->cpu0_STLB TOTAL        ACCESS:     230398 HIT:      68491 MISS:     161907 MISS_MERGE:          0
++cpu0->cpu0_STLB LOAD         ACCESS:     230398 HIT:      68491 MISS:     161907 MISS_MERGE:          0
++cpu0->cpu0_STLB RFO          ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_STLB PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_STLB WRITE        ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_STLB TRANSLATION  ACCESS:          0 HIT:          0 MISS:          0 MISS_MERGE:          0
++cpu0->cpu0_STLB PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0
++cpu0->cpu0_STLB AVERAGE MISS LATENCY: 248.2 cycles
++
++DRAM Statistics
++
++Channel 0 RQ ROW_BUFFER_HIT:       4737
++  ROW_BUFFER_MISS:    1372943
++  AVG DBUS CONGESTED CYCLE: 9.497
++Channel 0 WQ ROW_BUFFER_HIT:     203639
++  ROW_BUFFER_MISS:     452340
++  FULL:          0
++Channel 0 REFRESHES ISSUED:      12289
+diff --git a/run_baseline.sh b/run_baseline.sh
+new file mode 100755
+index 00000000..c062ce1a
+--- /dev/null
++++ b/run_baseline.sh
+@@ -0,0 +1,25 @@
++#!/bin/bash
++
++# Create a folder to store the output logs
++# mkdir -p results
++
++TRACE="traces/429.mcf-22B.champsimtrace.xz"
++OUTPUT_FILE="results/dip_mcf_results.txt"
++
++# Run a quick evaluation: 10 Million Warmup, 50 Million Simulation
++# (For final ACA project results, change these to 200000000 and 500000000)
++WARMUP=10000000
++SIM=50000000
++
++echo "Starting Baseline Benchmark on $TRACE..."
++echo "Warmup: $WARMUP | Simulation: $SIM"
++
++# Run ChampSim and redirect output to the results text file
++./bin/champsim --warmup-instructions $WARMUP --simulation-instructions $SIM $TRACE > $OUTPUT_FILE
++
++echo "Benchmark Complete! Full output saved to $OUTPUT_FILE"
++echo "---------------------------------------------------"
++echo "Baseline IPC Result:"
++
++# Extract and print just the IPC line for CPU 0 from the log file
++grep "CPU 0 cumulative IPC" $OUTPUT_FILE
+
+commit 2bbbcdf46c4e5f2a2f4b2baff9942390e1b2857c
+Author: Ram <wetcigar@Rams-MacBook-Air.local>
+Date:   Sun Oct 25 15:54:49 2026 +0530
+
+    Made L1 Changes
+
+diff --git a/replacement/dbp/dbp.cc b/replacement/dbp/dbp.cc
+new file mode 100644
+index 00000000..5846fa75
+--- /dev/null
++++ b/replacement/dbp/dbp.cc
+@@ -0,0 +1,67 @@
++#include "cache.h"
++#include <map>
++#include <vector>
++
++// 1. Predictor Table: Maps an Instruction Pointer (PC) to a confidence counter (0 to 3)
++// 3 = Highly likely to be dead, 0 = Highly likely to be reused
++std::map<uint64_t, int> dead_block_predictor;
++
++// 2. Parallel Cache Metadata: Tracks the last PC that accessed each block
++std::vector<std::vector<uint64_t>> last_touch_pc;
++
++// 3. Standard LRU counters for our fallback mechanism
++std::vector<std::vector<uint64_t>> lru_counters;
++
++void CACHE::initialize_replacement() {
++    // Size the metadata arrays based on the specific cache's dimensions
++    last_touch_pc.assign(NUM_SET, std::vector<uint64_t>(NUM_WAY, 0));
++    lru_counters.assign(NUM_SET, std::vector<uint64_t>(NUM_WAY, 0));
++}
++
++void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint32_t way, uint64_t full_addr, uint64_t ip, uint64_t victim_addr, uint32_t type, uint8_t hit) {
++    // Update the LRU fallback counter
++    lru_counters[set][way] = current_cycle;
++
++    if (hit) {
++        // The block was reused! The previous PC was wrong if it predicted "Dead".
++        uint64_t prev_pc = last_touch_pc[set][way];
++        if (dead_block_predictor[prev_pc] > 0) {
++            dead_block_predictor[prev_pc]--; // Decrement: Move towards "Alive"
++        }
++    } else {
++        // A cache miss means the block previously in this slot was evicted.
++        // Therefore, the last PC that touched it brought in a "Dead" block.
++        uint64_t evicted_pc = last_touch_pc[set][way];
++        if (dead_block_predictor[evicted_pc] < 3) {
++            dead_block_predictor[evicted_pc]++; // Increment: Move towards "Dead"
++        }
++    }
++
++    // Record the new PC (ip) that is currently accessing this cache block
++    last_touch_pc[set][way] = ip;
++}
++uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t set, const BLOCK* current_set, uint64_t ip, uint64_t full_addr, uint32_t type) {
++    // 1. DBP LOGIC: Check if any block in this set is predicted dead
++    for (uint32_t way = 0; way < NUM_WAY; way++) {
++        uint64_t block_pc = last_touch_pc[set][way];
++        if (dead_block_predictor[block_pc] == 3) {
++            return way; // Evict the predicted dead block immediately
++        }
++    }
++
++    // 2. FALLBACK LOGIC: If no block is predicted dead, use standard LRU
++    uint32_t lru_way = 0;
++    uint64_t oldest_cycle = lru_counters[set][0];
++    
++    for (uint32_t way = 1; way < NUM_WAY; way++) {
++        if (lru_counters[set][way] < oldest_cycle) {
++            oldest_cycle = lru_counters[set][way];
++            lru_way = way;
++        }
++    }
++    
++    return lru_way;
++}
++
++// Required by ChampSim to compile, even if empty
++void CACHE::replacement_final_stats() {}
+\ No newline at end of file

@@ -6,7 +6,7 @@ Creating a Configuration File
 
 The configuration file is a central fixture of the ChampSim build system.
 An example configuration file (champsim_config.json) is given in the root of the repository, but it is large and unwieldy.
-Your configuration file will likely be much smaller.
+Your configuration file will likely be much smaller. 
 This page will walk you through many of the features of the ChampSim configuration system.
 
 The configuration file is given as an input to the configuration script as below::

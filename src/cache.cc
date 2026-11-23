@@ -23,6 +23,7 @@
 #include <numeric>
 #include <fmt/core.h>
 
+#include "../replacement/dbp/dbp.h"
 #include "bandwidth.h"
 #include "champsim.h"
 #include "chrono.h"
@@ -381,6 +382,41 @@ bool CACHE::handle_write(const tag_lookup_type& handle_pkt)
                current_time.time_since_epoch() / clock_period);
   }
 
+  // If the L1 explicitly flagged this PC as dead (counter == 3), do NOT allocate it in L2.
+  std::size_t incoming_pc = handle_pkt.ip.to<std::size_t>();
+  bool is_dead_hint = (dbp::dead_block_predictor[incoming_pc] == 3);
+
+  if (is_dead_hint) {
+      // 1. Package it for the lower level (LLC)
+      request_type bypass_pkt;
+      bypass_pkt.asid[0] = handle_pkt.asid[0];
+      bypass_pkt.asid[1] = handle_pkt.asid[1];
+      bypass_pkt.type = access_type::WRITE; // Send as a writeback to the LLC
+      bypass_pkt.pf_metadata = handle_pkt.pf_metadata;
+      bypass_pkt.cpu = handle_pkt.cpu;
+      bypass_pkt.address = handle_pkt.address;
+      bypass_pkt.v_address = handle_pkt.v_address;
+      bypass_pkt.data = handle_pkt.data;
+      bypass_pkt.instr_id = handle_pkt.instr_id;
+      bypass_pkt.ip = handle_pkt.ip;
+      bypass_pkt.instr_depend_on_me = handle_pkt.instr_depend_on_me;
+      bypass_pkt.response_requested = false; // Writes don't need responses
+
+      // 2. Push it directly to the LLC's write queue
+      bool success = lower_level->add_wq(bypass_pkt);
+      
+      // 3. If the LLC write queue is full, stall this transaction and try again next cycle
+      if (!success) {
+          return false; 
+      }
+
+      // 4. Bypass successful! Do not allocate an L2 inflight fill.
+      return true;
+  }
+  // --- END BYPASSING LOGIC ---
+
+
+  // --- STANDARD L2 ALLOCATION (If not bypassed) ---
   fill_type to_allocate{handle_pkt, current_time};
   to_allocate.data_promise.ready_at(current_time + (warmup ? champsim::chrono::clock::duration{} : FILL_LATENCY));
   inflight_fills.push_back(to_allocate);

@@ -4,7 +4,7 @@
 # mkdir -p results
 
 TRACE="traces/429.mcf-22B.champsimtrace.xz"
-OUTPUT_FILE="results/dip_mcf_results.txt"
+OUTPUT_FILE="results/bypass.txt"
 
 # Run a quick evaluation: 10 Million Warmup, 50 Million Simulation
 # (For final ACA project results, change these to 200000000 and 500000000)
